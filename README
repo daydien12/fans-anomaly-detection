@@ -1,0 +1,2 @@
+Nhớ thay topic mqtt trong mqtt.h tương ứng với số thứ tự của esp32-s3
+Tương tự với file python fan.py
