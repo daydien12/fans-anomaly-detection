@@ -4,6 +4,7 @@
 #include <fan_v2_inferencing.h>
 
 #include <Arduino.h>
+#include <PubSubClient.h>
 #include "wifi_function.h"
 
 /*----------------- INA3221 Section ----------------*/
@@ -36,6 +37,9 @@ bool init_ADC(void);
 uint8_t poll_IMU(void);
 uint8_t poll_ADC(void);
 
+void init_MQTT(void);
+void connect_to_broker();
+void callback(char *topic, byte *payload, unsigned int length);
 /* Private variables ------------------------------------------------------- */
 typedef struct
 {
@@ -46,10 +50,16 @@ typedef struct
 fan_state_t state;
 
 HardwareSerial Uart1(1);
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 static int iterator = 0;
 static float data[N_SENSORS];
 static const bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
+
+const char *mqtt_broker = "Mqtt.mysignage.vn";
+const int mqtt_port = 1883;
+const char *topic = "mqtt";
 
 /**
  * @brief      Arduino setup function
@@ -74,6 +84,7 @@ void setup()
 
     init_IMU();
     init_ADC();
+    init_MQTT();
 }
 
 void loop()
@@ -91,7 +102,7 @@ void loop()
 
         String webstr;
         webstr = String(data[0]) + "|" + String(data[1]) + "|" + String(data[2]) + "|" + String(data[3]) + "\n";
-        WebSerial.print(webstr);
+        //WebSerial.print(webstr);
 
         buffer[ix] = data[0];
         buffer[ix + 1] = data[1];
@@ -139,8 +150,8 @@ void loop()
     {
         String webstr;
         webstr = String(result.classification[ix].label) + ": " + String(result.classification[ix].value) + "|";
-        WebSerial.print(webstr);
-        delay(100);
+        //WebSerial.print(webstr);
+
         // ei_printf("%s: %.5f\r\n", result.classification[ix].label, result.classification[ix].value);
         if (state.value < result.classification[ix].value)
         {
@@ -148,7 +159,7 @@ void loop()
             state.stt = ix;
         }
     }
-    WebSerial.println("\n-\n");
+    //WebSerial.println("\n-\n");
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
     ei_printf("    anomaly score: %.3f\r\n", result.anomaly);
@@ -156,7 +167,13 @@ void loop()
 
     Serial.println(state.stt);
     Uart1.print(state.stt);
-    delay(2000);
+
+    client.loop();
+    if (!client.connected())
+    {
+        connect_to_broker();
+    }
+    delay(1);
 }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || (EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_FUSION && EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_ACCELEROMETER)
@@ -211,4 +228,68 @@ uint8_t poll_ADC(void)
     data[0] = current_mA;
 
     return 0;
+}
+
+void init_MQTT(void)
+{
+    client.setServer(mqtt_broker, mqtt_port);
+    client.setCallback(callback);
+
+    while (!client.connected())
+    {
+        String client_id = "esp32-client-";
+        client_id += String(WiFi.macAddress());
+        WebSerial.printf("The client %s connects to the public mqtt broker\n", client_id.c_str());
+        if (client.connect(client_id.c_str()))
+        {
+            WebSerial.println("Public emqx mqtt broker connected");
+        }
+        else
+        {
+            WebSerial.print("failed with state ");
+            WebSerial.print(client.state());
+            delay(2000);
+        }
+    }
+    client.subscribe(topic);
+    // init and get the time
+}
+
+void callback(char *topic, byte *payload, unsigned int length)
+{
+    char name[25];
+    int i;
+    WebSerial.print("Message arrived in topic: ");
+    WebSerial.println(topic);
+    WebSerial.print("Message:");
+    for (i = 0; i < length; i++)
+    {
+        WebSerial.print((char)payload[i]);
+        name[i] = payload[i];
+    }
+    name[i] = 0;
+    WebSerial.println();
+    WebSerial.println("-----------------------");
+}
+
+void connect_to_broker()
+{
+    while (!client.connected())
+    {
+        WebSerial.print("Attempting MQTT connection...");
+        String clientId = "ESP32";
+        clientId += String(random(0xffff), HEX);
+        if (client.connect(clientId.c_str()))
+        {
+            WebSerial.println("connected");
+            client.subscribe(topic);
+        }
+        else
+        {
+            WebSerial.print("failed, rc=");
+            WebSerial.print(client.state());
+            WebSerial.println(" try again in 2 seconds");
+            delay(2000);
+        }
+    }
 }
