@@ -3,7 +3,8 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <HardwareSerial.h>
-
+#include <Arduino.h>
+#include "wifi_function.h"
 /* Constant defines -------------------------------------------------------- */
 #define SERIAL_DEBUG
 
@@ -65,14 +66,7 @@ void setup()
 #endif
 
     Serial.begin(115200);
-    WiFi.begin(ssid, pass);
-    ei_printf("\nWiFi!\n");
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(100);
-        ei_printf(".");
-    }
-    ei_printf("\nWiFi Connected!\n");
+    WF_Setup();
     String ipString = WiFi.localIP().toString();
     // Convert String to const char*
     const char *ipCharArray = ipString.c_str();
@@ -160,14 +154,19 @@ void loop()
     state.value = 0.0;
     state.stt = -1;
     // strcpy(state.label, "");
-
-    // print the predictions
+    String buffers; // Tạo một đối tượng String để lưu chuỗi đã định dạng
+    buffers = "Predictions (DSP: " + String(result.timing.dsp) + " ms., Classification: " + String(result.timing.classification) + " ms., Anomaly: " + String(result.timing.anomaly) + " ms.):\r\n";
+    // WebSerial.println(buffers); // In chuỗi đã định dạng
+    //  print the predictions
 #ifdef SERIAL_DEBUG
     ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.):\r\n",
               result.timing.dsp, result.timing.classification, result.timing.anomaly);
 #endif
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
+        String buffer; // Tạo một đối tượng String để lưu chuỗi đã định dạng
+        buffer = "" + String(result.classification[ix].label) + ": " + String(result.classification[ix].value) + "\r\n";
+        WebSerial.println(buffer); // In chuỗi đã định dạng
 #ifdef SERIAL_DEBUG
         ei_printf("%s: %.5f\r\n", result.classification[ix].label, result.classification[ix].value);
 #endif
