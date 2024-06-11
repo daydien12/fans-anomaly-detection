@@ -1,41 +1,10 @@
 /* Includes ---------------------------------------------------------------- */
-#include <fan_v2_inferencing.h>
-#include <Wire.h>
+#include <WiFi.h>
 #include <HardwareSerial.h>
+#include <fan_v2_inferencing.h>
 
-/* Constant defines -------------------------------------------------------- */
-#define SERIAL_DEBUG
-
-#define TX 17
-#define RX 18
-
-HardwareSerial Uart1(1);
-
-#define SDA_PIN 21
-#define SCL_PIN 46
-
-/** Number sensor axes used */
-#define N_SENSORS 4
-
-#define DEBUG 1
-
-bool init_IMU(void);
-bool init_ADC(void);
-uint8_t poll_IMU(void);
-uint8_t poll_ADC(void);
-
-/* Private variables ------------------------------------------------------- */
-typedef struct
-{
-    float value;
-    int stt;
-    char *label;
-} fan_state_t;
-
-static const bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
-static float data[N_SENSORS];
-static int iterator = 0;
-fan_state_t state;
+#include <Arduino.h>
+#include "wifi_function.h"
 
 /*----------------- INA3221 Section ----------------*/
 #include "ina3221.h"
@@ -52,6 +21,36 @@ INA3221 ina3221;
 Adafruit_ADXL345_Unified adxl345 = Adafruit_ADXL345_Unified(12345);
 /*-------------------------------------------------*/
 
+/* Constant defines -------------------------------------------------------- */
+#define TX 17
+#define RX 18
+
+#define SDA_PIN 21
+#define SCL_PIN 46
+
+/** Number sensor axes used */
+#define N_SENSORS 4
+
+bool init_IMU(void);
+bool init_ADC(void);
+uint8_t poll_IMU(void);
+uint8_t poll_ADC(void);
+
+/* Private variables ------------------------------------------------------- */
+typedef struct
+{
+    float value;
+    int stt;
+    char *label;
+} fan_state_t;
+fan_state_t state;
+
+HardwareSerial Uart1(1);
+
+static int iterator = 0;
+static float data[N_SENSORS];
+static const bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
+
 /**
  * @brief      Arduino setup function
  */
@@ -62,37 +61,23 @@ void setup()
     Serial.begin(115200);
 #endif
 
+    Serial.begin(115200);
+    WF_Setup();
+    String ipString = WiFi.localIP().toString() + "\n";
+    // Convert String to const char*
+    const char *ipCharArray = ipString.c_str();
+    // Print the IP address
+    ei_printf(ipCharArray);
     Uart1.begin(115200, SERIAL_8N1, RX, TX);
     Wire.setPins(SDA_PIN, SCL_PIN);
     Wire.begin();
 
-    /* ADXL345 */
-    if (!adxl345.begin(ADXL345_DEFAULT_ADDRESS))
-    {
-#ifdef SERIAL_DEBUG
-        Serial.println("Could not find a valid ADXL345 sensor, check wiring!");
-#endif
-        while (1)
-            ;
-    }
-    // Set the range to +/- 2g
-    adxl345.setRange(ADXL345_RANGE_2_G);
-    adxl345.setDataRate(ADXL345_DATARATE_100_HZ);
-
-    ina3221.begin(SDA_PIN, SCL_PIN);
-#ifdef SERIAL_DEBUG
-    Serial.println("Edge Impulse Sensor Fusion Inference\r\n");
-#endif
+    init_IMU();
+    init_ADC();
 }
 
-/**
- * @brief      Get data and run inferencing
- */
 void loop()
 {
-#ifdef SERIAL_DEBUG
-    ei_printf("Sampling...\r\n");
-#endif
     // Allocate a buffer here for the values we'll read from the sensor
     float buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE] = {0};
 
@@ -103,6 +88,10 @@ void loop()
 
         poll_ADC();
         poll_IMU();
+
+        String webstr;
+        webstr = String(data[0]) + "|" + String(data[1]) + "|" + String(data[2]) + "|" + String(data[3]) + "\n";
+        WebSerial.print(webstr);
 
         buffer[ix] = data[0];
         buffer[ix + 1] = data[1];
@@ -122,9 +111,7 @@ void loop()
     int err = numpy::signal_from_buffer(buffer, EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, &signal);
     if (err != 0)
     {
-#ifdef SERIAL_DEBUG
-        ei_printf("ERR:(%d)\r\n", err);
-#endif
+        // ei_printf("ERR:(%d)\r\n", err);
         return;
     }
 
@@ -134,34 +121,34 @@ void loop()
     err = run_classifier(&signal, &result, debug_nn);
     if (err != EI_IMPULSE_OK)
     {
-#ifdef SERIAL_DEBUG
-        ei_printf("ERR:(%d)\r\n", err);
-#endif
+        // ei_printf("ERR:(%d)\r\n", err);
         return;
     }
 
     /* Reset fan state */
     state.value = 0.0;
     state.stt = -1;
-    // strcpy(state.label, "");
 
-    // print the predictions
-#ifdef SERIAL_DEBUG
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.):\r\n",
-              result.timing.dsp, result.timing.classification, result.timing.anomaly);
-#endif
+    String webstr; // Tạo một đối tượng String để lưu chuỗi đã định dạng
+    webstr = "Predictions (DSP: " + String(result.timing.dsp) + " ms., Classification: " + String(result.timing.classification) + " ms., Anomaly: " + String(result.timing.anomaly) + " ms.):\r\n";
+    // WebSerial.println(buffers); // In chuỗi đã định dạng
+
+    //  print the predictions
+    // ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.):\r\n", result.timing.dsp, result.timing.classification, result.timing.anomaly);
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
-#ifdef SERIAL_DEBUG
-        ei_printf("%s: %.5f\r\n", result.classification[ix].label, result.classification[ix].value);
-#endif
+        String webstr;
+        webstr = String(result.classification[ix].label) + ": " + String(result.classification[ix].value) + "|";
+        WebSerial.print(webstr);
+        delay(100);
+        // ei_printf("%s: %.5f\r\n", result.classification[ix].label, result.classification[ix].value);
         if (state.value < result.classification[ix].value)
         {
             state.value = result.classification[ix].value;
             state.stt = ix;
-            // strcpy(state.label, result.classification[ix].label);
         }
     }
+    WebSerial.println("\n-\n");
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
     ei_printf("    anomaly score: %.3f\r\n", result.anomaly);
@@ -181,9 +168,7 @@ bool init_IMU(void)
     /* ADXL345 */
     if (!adxl345.begin(ADXL345_DEFAULT_ADDRESS))
     {
-#ifdef SERIAL_DEBUG
-        Serial.println("Could not find a valid ADXL345 sensor, check wiring!");
-#endif
+        WebSerial.println("Could not find a valid ADXL345 sensor, check wiring!");
         while (1)
             ;
     }
