@@ -1,5 +1,6 @@
 /* Includes ---------------------------------------------------------------- */
 #include <fan_v2_inferencing.h>
+#include <WiFi.h>
 #include <Wire.h>
 #include <HardwareSerial.h>
 
@@ -51,7 +52,8 @@ INA3221 ina3221;
 
 Adafruit_ADXL345_Unified adxl345 = Adafruit_ADXL345_Unified(12345);
 /*-------------------------------------------------*/
-
+const char *ssid = "P702_2G";
+const char *pass = "nhanma25";
 /**
  * @brief      Arduino setup function
  */
@@ -62,6 +64,20 @@ void setup()
     Serial.begin(115200);
 #endif
 
+    Serial.begin(115200);
+    WiFi.begin(ssid, pass);
+    ei_printf("\nWiFi!\n");
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(100);
+        ei_printf(".");
+    }
+    ei_printf("\nWiFi Connected!\n");
+    String ipString = WiFi.localIP().toString();
+    // Convert String to const char*
+    const char *ipCharArray = ipString.c_str();
+    // Print the IP address
+    ei_printf(ipCharArray);
     Uart1.begin(115200, SERIAL_8N1, RX, TX);
     Wire.setPins(SDA_PIN, SCL_PIN);
     Wire.begin();
