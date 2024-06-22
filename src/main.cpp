@@ -4,6 +4,7 @@
 #include <fan_v2_inferencing.h>
 
 #include <Arduino.h>
+#include <PubSubClient.h>
 #include "wifi_function.h"
 
 /*----------------- INA3221 Section ----------------*/
@@ -36,6 +37,10 @@ bool init_ADC(void);
 uint8_t poll_IMU(void);
 uint8_t poll_ADC(void);
 
+void init_MQTT(void);
+void connect_to_broker();
+void callback(char *topic, byte *payload, unsigned int length);
+
 /* Private variables ------------------------------------------------------- */
 typedef struct
 {
@@ -46,10 +51,15 @@ typedef struct
 fan_state_t state;
 
 HardwareSerial Uart1(1);
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+const char *mqtt_broker = "Mqtt.mysignage.vn";
+const int mqtt_port = 1883;
+const char *topic = "mqtt_test";
 
 static float data[N_SENSORS];
 static const bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
-
 
 void setup()
 {
@@ -64,6 +74,7 @@ void setup()
 
     init_IMU();
     init_ADC();
+    init_MQTT();
 }
 
 void loop()
@@ -119,7 +130,14 @@ void loop()
 
     Serial.println(state.stt);
     Uart1.print(state.stt);
-    delay(500);
+
+    client.loop();
+    if (!client.connected())
+    {
+        connect_to_broker();
+    }
+
+    delay(1);
 }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || (EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_FUSION && EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_ACCELEROMETER)
@@ -174,4 +192,68 @@ uint8_t poll_ADC(void)
     data[0] = current_mA;
 
     return 0;
+}
+
+void init_MQTT(void)
+{
+    client.setServer(mqtt_broker, mqtt_port);
+    client.setCallback(callback);
+
+    while (!client.connected())
+    {
+        String client_id = "esp32-client-";
+        client_id += String(WiFi.macAddress());
+        WebSerial.printf("The client %s connects to the public mqtt broker\n", client_id.c_str());
+        if (client.connect(client_id.c_str()))
+        {
+            WebSerial.println("Public emqx mqtt broker connected");
+        }
+        else
+        {
+            WebSerial.print("failed with state ");
+            WebSerial.print(client.state());
+            delay(2000);
+        }
+    }
+    client.subscribe(topic);
+    // init and get the time
+}
+
+void callback(char *topic, byte *payload, unsigned int length)
+{
+    char name[25];
+    int i;
+    WebSerial.print("Message arrived in topic: ");
+    WebSerial.println(topic);
+    WebSerial.print("Message:");
+    for (i = 0; i < length; i++)
+    {
+        WebSerial.print((char)payload[i]);
+        name[i] = payload[i];
+    }
+    name[i] = 0;
+    WebSerial.println();
+    WebSerial.println("-----------------------");
+}
+
+void connect_to_broker()
+{
+    while (!client.connected())
+    {
+        WebSerial.print("Attempting MQTT connection...");
+        String clientId = "ESP32";
+        clientId += String(random(0xffff), HEX);
+        if (client.connect(clientId.c_str()))
+        {
+            WebSerial.println("connected");
+            client.subscribe(topic);
+        }
+        else
+        {
+            WebSerial.print("failed, rc=");
+            WebSerial.print(client.state());
+            WebSerial.println(" try again in 2 seconds");
+            delay(2000);
+        }
+    }
 }
