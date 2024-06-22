@@ -47,27 +47,17 @@ fan_state_t state;
 
 HardwareSerial Uart1(1);
 
-static int iterator = 0;
 static float data[N_SENSORS];
 static const bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 
-/**
- * @brief      Arduino setup function
- */
+
 void setup()
 {
-    /* Init serial */
-#ifdef SERIAL_DEBUG
-    Serial.begin(115200);
-#endif
-
-    Serial.begin(115200);
     WF_Setup();
     String ipString = WiFi.localIP().toString() + "\n";
-    // Convert String to const char*
     const char *ipCharArray = ipString.c_str();
-    // Print the IP address
     ei_printf(ipCharArray);
+
     Uart1.begin(115200, SERIAL_8N1, RX, TX);
     Wire.setPins(SDA_PIN, SCL_PIN);
     Wire.begin();
@@ -78,20 +68,14 @@ void setup()
 
 void loop()
 {
-    // Allocate a buffer here for the values we'll read from the sensor
     float buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE] = {0};
 
     for (size_t ix = 0; ix < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; ix += EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
     {
-        // Determine the next tick (and then sleep later)
         int64_t next_tick = (int64_t)micros() + ((int64_t)EI_CLASSIFIER_INTERVAL_MS * 1000);
 
         poll_ADC();
         poll_IMU();
-
-        String webstr;
-        webstr = String(data[0]) + "|" + String(data[1]) + "|" + String(data[2]) + "|" + String(data[3]) + "\n";
-        WebSerial.print(webstr);
 
         buffer[ix] = data[0];
         buffer[ix + 1] = data[1];
@@ -106,57 +90,36 @@ void loop()
         }
     }
 
-    // Turn the raw buffer in a signal which we can the classify
     signal_t signal;
     int err = numpy::signal_from_buffer(buffer, EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, &signal);
     if (err != 0)
     {
-        // ei_printf("ERR:(%d)\r\n", err);
         return;
     }
 
-    // Run the classifier
     ei_impulse_result_t result = {0};
 
     err = run_classifier(&signal, &result, debug_nn);
     if (err != EI_IMPULSE_OK)
     {
-        // ei_printf("ERR:(%d)\r\n", err);
         return;
     }
 
-    /* Reset fan state */
     state.value = 0.0;
     state.stt = -1;
 
-    String webstr; // Tạo một đối tượng String để lưu chuỗi đã định dạng
-    webstr = "Predictions (DSP: " + String(result.timing.dsp) + " ms., Classification: " + String(result.timing.classification) + " ms., Anomaly: " + String(result.timing.anomaly) + " ms.):\r\n";
-    // WebSerial.println(buffers); // In chuỗi đã định dạng
-
-    //  print the predictions
-    // ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.):\r\n", result.timing.dsp, result.timing.classification, result.timing.anomaly);
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
-        String webstr;
-        webstr = String(result.classification[ix].label) + ": " + String(result.classification[ix].value) + "|";
-        WebSerial.print(webstr);
-        delay(100);
-        // ei_printf("%s: %.5f\r\n", result.classification[ix].label, result.classification[ix].value);
         if (state.value < result.classification[ix].value)
         {
             state.value = result.classification[ix].value;
             state.stt = ix;
         }
     }
-    WebSerial.println("\n-\n");
-
-#if EI_CLASSIFIER_HAS_ANOMALY == 1
-    ei_printf("    anomaly score: %.3f\r\n", result.anomaly);
-#endif
 
     Serial.println(state.stt);
     Uart1.print(state.stt);
-    delay(2000);
+    delay(500);
 }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || (EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_FUSION && EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_ACCELEROMETER)

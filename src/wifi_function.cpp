@@ -44,8 +44,6 @@ void WF_Handler(uint8_t *data, size_t len){
  */
 void WF_Setup(void) {
 
-
-
   // //WiFiManager
   // //Local intialization. Once its business is done, there is no need to keep it around
 
