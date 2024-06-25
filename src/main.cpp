@@ -124,16 +124,6 @@ void loop()
     StaticJsonDocument<200> doc;
     JsonArray percent = doc.createNestedArray("percent");
 
-    // for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
-    // {
-    //     percent.add(result.classification[ix].value);
-    //     if (state.value < result.classification[ix].value)
-    //     {
-    //         state.value = result.classification[ix].value;
-    //         state.stt = ix;
-    //     }
-    // }
-
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
         if (state.value < result.classification[ix].value)
