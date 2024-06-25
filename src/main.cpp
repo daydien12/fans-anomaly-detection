@@ -124,15 +124,57 @@ void loop()
     StaticJsonDocument<200> doc;
     JsonArray percent = doc.createNestedArray("percent");
 
+    // for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
+    // {
+    //     percent.add(result.classification[ix].value);
+    //     if (state.value < result.classification[ix].value)
+    //     {
+    //         state.value = result.classification[ix].value;
+    //         state.stt = ix;
+    //     }
+    // }
+
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
-        percent.add(result.classification[ix].value);
         if (state.value < result.classification[ix].value)
         {
             state.value = result.classification[ix].value;
             state.stt = ix;
         }
     }
+    float data1 = state.value - result.classification[4].value;
+    if ((state.stt == 0))
+    {
+        if ((data1 <= 0.995))
+        {
+            percent.add(result.classification[4].value);
+            percent.add(result.classification[1].value);
+            percent.add(result.classification[2].value);
+            percent.add(result.classification[3].value);
+            percent.add(result.classification[0].value);
+            percent.add(result.classification[5].value);
+            state.stt = 4;
+        }
+        else
+        {
+            percent.add(result.classification[0].value);
+            percent.add(result.classification[1].value);
+            percent.add(result.classification[2].value);
+            percent.add(result.classification[3].value);
+            percent.add(result.classification[4].value);
+            percent.add(result.classification[5].value);
+        }
+    }
+    else
+    {
+        percent.add(result.classification[0].value);
+        percent.add(result.classification[1].value);
+        percent.add(result.classification[2].value);
+        percent.add(result.classification[3].value);
+        percent.add(result.classification[4].value);
+        percent.add(result.classification[5].value);
+    }
+
     doc["state"] = state.stt;
     doc["ampe"] = data[0];
     doc["truc_x"] = data[1];
@@ -144,15 +186,21 @@ void loop()
     serializeJson(doc, jsonBuffer);
     client.publish(topic, jsonBuffer);
 
-    Serial.println(state.stt);
-    Uart1.print(state.stt);
+
+    StaticJsonDocument<256> jsonDoc;
+    JsonArray jsonArray = jsonDoc.to<JsonArray>();
+    jsonArray.add(state.stt);
+    serializeJson(jsonDoc, jsonBuffer);
+    client.publish("mqtt_tft", jsonBuffer);
+
+    // Serial.println(state.stt);
+    // Uart1.print(state.stt);
 
     client.loop();
     if (!client.connected())
     {
         connect_to_broker();
     }
-
     delay(1000);
 }
 
