@@ -4,6 +4,7 @@
 #include <fan_v2_inferencing.h>
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include "wifi_function.h"
 
@@ -79,6 +80,7 @@ void setup()
 
 void loop()
 {
+
     float buffer[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE] = {0};
 
     for (size_t ix = 0; ix < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; ix += EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
@@ -119,14 +121,28 @@ void loop()
     state.value = 0.0;
     state.stt = -1;
 
+    StaticJsonDocument<200> doc;
+    JsonArray percent = doc.createNestedArray("percent");
+
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++)
     {
+        percent.add(result.classification[ix].value);
         if (state.value < result.classification[ix].value)
         {
             state.value = result.classification[ix].value;
             state.stt = ix;
         }
     }
+    doc["state"] = state.stt;
+    doc["ampe"] = data[0];
+    doc["truc_x"] = data[1];
+    doc["truc_y"] = data[2];
+    doc["truc_z"] = data[3];
+
+    // Chuyển đổi JSON document thành chuỗi JSON
+    char jsonBuffer[500];
+    serializeJson(doc, jsonBuffer);
+    client.publish(topic, jsonBuffer);
 
     Serial.println(state.stt);
     Uart1.print(state.stt);
@@ -137,7 +153,7 @@ void loop()
         connect_to_broker();
     }
 
-    delay(1);
+    delay(1000);
 }
 
 #if !defined(EI_CLASSIFIER_SENSOR) || (EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_FUSION && EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_ACCELEROMETER)
@@ -221,19 +237,19 @@ void init_MQTT(void)
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
-    char name[25];
-    int i;
-    WebSerial.print("Message arrived in topic: ");
-    WebSerial.println(topic);
-    WebSerial.print("Message:");
-    for (i = 0; i < length; i++)
-    {
-        WebSerial.print((char)payload[i]);
-        name[i] = payload[i];
-    }
-    name[i] = 0;
-    WebSerial.println();
-    WebSerial.println("-----------------------");
+    // char name[25];
+    // int i;
+    // WebSerial.print("Message arrived in topic: ");
+    // WebSerial.println(topic);
+    // WebSerial.print("Message:");
+    // for (i = 0; i < length; i++)
+    // {
+    //     WebSerial.print((char)payload[i]);
+    //     name[i] = payload[i];
+    // }
+    // name[i] = 0;
+    // WebSerial.println();
+    // WebSerial.println("-----------------------");
 }
 
 void connect_to_broker()
