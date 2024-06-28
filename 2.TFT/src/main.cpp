@@ -20,7 +20,8 @@ enum state
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const char *mqtt_broker = "Mqtt.mysignage.vn";
+//const char *mqtt_broker = "Mqtt.mysignage.vn";
+const char *mqtt_broker = "192.168.1.1";
 const int mqtt_port = 1883;
 const char *topic = "mqtt_tft";
 
